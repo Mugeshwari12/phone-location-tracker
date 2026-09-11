@@ -1,0 +1,1722 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+    <title>Phone GPS Tracker</title>
+
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <link
+        rel="stylesheet"
+        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    >
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+
+        body {
+            font-family: Arial, sans-serif;
+            background: #f4f6f8;
+            margin: 0;
+            padding: 20px;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 5px;
+        }
+
+        h2 {
+            margin-top: 30px;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 25px;
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .card h3 {
+            margin: 5px 0 12px;
+            font-size: 16px;
+        }
+
+        .value {
+            font-size: 24px;
+            font-weight: bold;
+            word-break: break-word;
+        }
+
+        .buttons {
+            text-align: center;
+            margin: 25px 0;
+        }
+
+        button {
+            padding: 12px 20px;
+            margin: 5px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 15px;
+        }
+
+        button:hover {
+            opacity: 0.85;
+        }
+
+        #startButton {
+            background: #28a745;
+            color: white;
+        }
+
+        #stopButton {
+            background: #dc3545;
+            color: white;
+        }
+
+        #historyButton {
+            background: #007bff;
+            color: white;
+        }
+
+        #dateButton {
+            background: #6f42c1;
+            color: white;
+        }
+
+        .export-button {
+            background: #198754;
+            color: white;
+        }
+
+        .date-section {
+            background: white;
+            padding: 20px;
+            margin-top: 25px;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+
+        input[type="date"] {
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+        }
+
+        #message {
+            text-align: center;
+            margin-top: 15px;
+            font-weight: bold;
+            min-height: 20px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            margin-top: 15px;
+        }
+
+        th,
+        td {
+            padding: 12px;
+            border: 1px solid #ddd;
+            text-align: center;
+        }
+
+        th {
+            background: #343a40;
+            color: white;
+        }
+
+        tr:hover {
+            background: #f1f1f1;
+            cursor: pointer;
+        }
+
+        .table-container {
+            overflow-x: auto;
+        }
+
+        .charts {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .chart-card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .chart-card h3 {
+            text-align: center;
+            margin-top: 0;
+        }
+
+        .summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .summary-card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+
+        .summary-card h3 {
+            margin-bottom: 10px;
+        }
+
+        .summary-value {
+            font-size: 21px;
+            font-weight: bold;
+            word-break: break-word;
+        }
+
+        #map {
+            height: 450px;
+            margin-top: 25px;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .section-title {
+            margin-top: 35px;
+        }
+
+        @media (max-width: 600px) {
+
+            body {
+                padding: 10px;
+            }
+
+            .charts {
+                grid-template-columns: 1fr;
+            }
+
+            button {
+                width: 90%;
+                max-width: 350px;
+            }
+
+            #map {
+                height: 400px;
+            }
+
+            th,
+            td {
+                font-size: 13px;
+                padding: 8px;
+            }
+
+        }
+
+    </style>
+
+</head>
+
+
+<body>
+
+    <h1>📱 Phone GPS Tracker</h1>
+
+    <p class="subtitle">
+        Real-Time Location Tracking System
+    </p>
+
+
+    <!-- CURRENT DASHBOARD -->
+
+    <div class="dashboard">
+
+        <div class="card">
+            <h3>Tracking Status</h3>
+            <div class="value" id="status">
+                🔴 Stopped
+            </div>
+        </div>
+
+
+        <div class="card">
+            <h3>Latitude</h3>
+            <div class="value" id="latitude">
+                --
+            </div>
+        </div>
+
+
+        <div class="card">
+            <h3>Longitude</h3>
+            <div class="value" id="longitude">
+                --
+            </div>
+        </div>
+
+
+        <div class="card">
+            <h3>Today's Distance</h3>
+            <div class="value" id="distance">
+                0 km
+            </div>
+        </div>
+
+
+        <div class="card">
+            <h3>GPS Points</h3>
+            <div class="value" id="points">
+                0
+            </div>
+        </div>
+
+
+        <div class="card">
+            <h3>📍 Current Location</h3>
+            <div class="value" id="currentLocation">
+                Unknown
+            </div>
+        </div>
+
+
+        <div class="card">
+            <h3>🚶 Current Speed</h3>
+            <div class="value" id="currentSpeed">
+                0 km/h
+            </div>
+        </div>
+
+
+        <div class="card">
+            <h3>🎯 GPS Accuracy</h3>
+            <div class="value" id="gpsAccuracy">
+                -- m
+            </div>
+        </div>
+
+
+        <div class="card">
+            <h3>📊 Average Speed</h3>
+            <div class="value" id="averageSpeed">
+                0 km/h
+            </div>
+        </div>
+
+
+        <div class="card">
+            <h3>🚗 Maximum Speed</h3>
+            <div class="value" id="maxSpeed">
+                0 km/h
+            </div>
+        </div>
+
+
+        <div class="card">
+            <h3>🕐 First Tracking</h3>
+            <div class="value" id="firstTracking">
+                --
+            </div>
+        </div>
+
+
+        <div class="card">
+            <h3>🕐 Last Tracking</h3>
+            <div class="value" id="lastTracking">
+                --
+            </div>
+        </div>
+
+
+        <div class="card">
+            <h3>⏱️ Tracking Duration</h3>
+            <div class="value" id="trackingDuration">
+                0m
+            </div>
+        </div>
+
+    </div>
+
+
+    <!-- BUTTONS -->
+
+    <div class="buttons">
+
+        <button
+            id="startButton"
+            onclick="startTracking()">
+            ▶ Start Tracking
+        </button>
+
+        <button
+            id="stopButton"
+            onclick="stopTracking()">
+            ⏹ Stop Tracking
+        </button>
+
+        <button
+            id="historyButton"
+            onclick="window.open('/gps_history_map.html', '_blank')">
+            🗺️ View History Map
+        </button>
+
+    </div>
+
+
+    <div id="message">
+        Tracking stopped.
+    </div>
+
+
+    <!-- EXPORT REPORTS -->
+
+    <div class="date-section">
+
+        <h2>📥 Export Reports</h2>
+
+        <p>
+            Download your GPS tracking data for analysis.
+        </p>
+
+        <button
+            class="export-button"
+            onclick="window.location.href='/export_locations'">
+            📥 Export GPS History CSV
+        </button>
+
+        <button
+            class="export-button"
+            onclick="window.location.href='/export_daily_stats'">
+            📊 Export Daily Analytics CSV
+        </button>
+
+    </div>
+
+
+    <!-- DATE STATISTICS -->
+
+    <div class="date-section">
+
+        <h2>📅 View Statistics by Date</h2>
+
+        <input
+            type="date"
+            id="selectedDate"
+        >
+
+        <button
+            id="dateButton"
+            onclick="loadSelectedDate()">
+            View Date
+        </button>
+
+        <div
+            id="dateResult"
+            style="margin-top:20px;">
+        </div>
+
+    </div>
+
+
+    <!-- PERFORMANCE SUMMARY -->
+
+    <h2 class="section-title">
+        🏆 Performance Summary
+    </h2>
+
+    <div class="summary">
+
+        <div class="summary-card">
+            <h3>📅 Total Tracking Days</h3>
+
+            <div
+                class="summary-value"
+                id="totalTrackingDays">
+                --
+            </div>
+        </div>
+
+
+        <div class="summary-card">
+            <h3>🛣️ Total Distance</h3>
+
+            <div
+                class="summary-value"
+                id="totalDistance">
+                --
+            </div>
+        </div>
+
+
+        <div class="summary-card">
+            <h3>🚗 Overall Maximum Speed</h3>
+
+            <div
+                class="summary-value"
+                id="overallMaxSpeed">
+                --
+            </div>
+        </div>
+
+
+        <div class="summary-card">
+            <h3>📍 Total GPS Points</h3>
+
+            <div
+                class="summary-value"
+                id="totalGpsPoints">
+                --
+            </div>
+        </div>
+
+
+        <div class="summary-card">
+
+            <h3>🥇 Highest-Speed Day</h3>
+
+            <div
+                class="summary-value"
+                id="highestSpeedDay">
+                --
+            </div>
+
+            <p id="highestSpeedValue">
+                --
+            </p>
+
+        </div>
+
+
+        <div class="summary-card">
+
+            <h3>📏 Longest-Distance Day</h3>
+
+            <div
+                class="summary-value"
+                id="longestDistanceDay">
+                --
+            </div>
+
+            <p id="longestDistanceValue">
+                --
+            </p>
+
+        </div>
+
+
+        <div class="summary-card">
+
+            <h3>📡 Most GPS-Active Day</h3>
+
+            <div
+                class="summary-value"
+                id="mostGpsPointsDay">
+                --
+            </div>
+
+            <p id="mostGpsPointsValue">
+                --
+            </p>
+
+        </div>
+
+    </div>
+
+
+    <!-- DAILY ANALYTICS -->
+
+    <h2 class="section-title">
+        📊 Daily Analytics
+    </h2>
+
+    <div class="table-container">
+
+        <table>
+
+            <thead>
+
+                <tr>
+
+                    <th>Date</th>
+
+                    <th>GPS Points</th>
+
+                    <th>Distance</th>
+
+                    <th>Average Speed</th>
+
+                    <th>Maximum Speed</th>
+
+                </tr>
+
+            </thead>
+
+            <tbody id="dailyTable">
+
+                <tr>
+
+                    <td colspan="5">
+                        Loading...
+                    </td>
+
+                </tr>
+
+            </tbody>
+
+        </table>
+
+    </div>
+
+
+    <!-- CHARTS -->
+
+    <h2 class="section-title">
+        📈 Visual Analytics
+    </h2>
+
+    <div class="charts">
+
+        <div class="chart-card">
+
+            <h3>
+                🛣️ Distance by Date
+            </h3>
+
+            <canvas id="distanceChart"></canvas>
+
+        </div>
+
+
+        <div class="chart-card">
+
+            <h3>
+                📊 Average Speed by Date
+            </h3>
+
+            <canvas id="averageSpeedChart"></canvas>
+
+        </div>
+
+
+        <div class="chart-card">
+
+            <h3>
+                🚗 Maximum Speed by Date
+            </h3>
+
+            <canvas id="maxSpeedChart"></canvas>
+
+        </div>
+
+
+        <div class="chart-card">
+
+            <h3>
+                📍 GPS Points by Date
+            </h3>
+
+            <canvas id="pointsChart"></canvas>
+
+        </div>
+
+    </div>
+
+
+    <!-- MAP -->
+
+    <h2 class="section-title">
+        🗺️ Live Location Map
+    </h2>
+
+    <div id="map"></div>
+
+
+<script>
+
+    let tracking = false;
+
+    let trackingInterval = null;
+
+    let map = L.map("map").setView(
+        [13.0785, 77.6060],
+        15
+    );
+
+    let marker = null;
+
+
+    L.tileLayer(
+        "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        {
+            attribution:
+                "&copy; OpenStreetMap contributors"
+        }
+    ).addTo(map);
+
+
+    // --------------------------------------------------
+    // LOAD CURRENT STATISTICS
+    // --------------------------------------------------
+
+    function loadStats() {
+
+        fetch("/stats")
+
+            .then(response => response.json())
+
+            .then(data => {
+
+                document.getElementById("latitude").innerText =
+                    data.latitude !== null
+                    ? Number(data.latitude).toFixed(6)
+                    : "--";
+
+
+                document.getElementById("longitude").innerText =
+                    data.longitude !== null
+                    ? Number(data.longitude).toFixed(6)
+                    : "--";
+
+
+                document.getElementById("distance").innerText =
+                    Number(data.distance).toFixed(2) + " km";
+
+
+                document.getElementById("points").innerText =
+                    data.points;
+
+
+                document.getElementById("currentLocation").innerText =
+                    data.current_location;
+
+
+                document.getElementById("currentSpeed").innerText =
+                    Number(data.current_speed).toFixed(2) + " km/h";
+
+
+                document.getElementById("averageSpeed").innerText =
+                    Number(data.average_speed).toFixed(2) + " km/h";
+
+
+                document.getElementById("maxSpeed").innerText =
+                    Number(data.max_speed).toFixed(2) + " km/h";
+
+
+                document.getElementById("firstTracking").innerText =
+                    data.first_tracking || "--";
+
+
+                document.getElementById("lastTracking").innerText =
+                    data.last_tracking || "--";
+
+
+                document.getElementById("trackingDuration").innerText =
+                    data.tracking_duration || "0m";
+
+
+                if (
+                    data.latitude !== null &&
+                    data.longitude !== null
+                ) {
+
+                    updateMap(
+                        data.latitude,
+                        data.longitude
+                    );
+
+                }
+
+            })
+
+            .catch(error => {
+
+                console.error(
+                    "Error loading statistics:",
+                    error
+                );
+
+            });
+
+    }
+
+
+    // --------------------------------------------------
+    // UPDATE MAP
+    // --------------------------------------------------
+
+    function updateMap(
+        latitude,
+        longitude
+    ) {
+
+        map.setView(
+            [latitude, longitude],
+            16
+        );
+
+
+        if (marker) {
+
+            marker.setLatLng([
+                latitude,
+                longitude
+            ]);
+
+        }
+
+        else {
+
+            marker = L.marker([
+                latitude,
+                longitude
+            ])
+            .addTo(map)
+            .bindPopup(
+                "📍 Current Location"
+            )
+            .openPopup();
+
+        }
+
+    }
+
+
+    // --------------------------------------------------
+    // GET LOCATION
+    // --------------------------------------------------
+
+    function getLocation() {
+
+        if (!navigator.geolocation) {
+
+            document.getElementById("message").innerHTML =
+                "GPS is not supported by this browser.";
+
+            return;
+
+        }
+
+
+        navigator.geolocation.getCurrentPosition(
+
+            function(position) {
+
+                let latitude =
+                    position.coords.latitude;
+
+
+                let longitude =
+                    position.coords.longitude;
+
+
+                // GPS accuracy in metres
+
+                let accuracy =
+                    position.coords.accuracy;
+
+
+                // Display GPS accuracy
+
+                document.getElementById(
+                    "gpsAccuracy"
+                ).innerText =
+                    Number(accuracy).toFixed(1) + " m";
+
+
+                fetch("/save_location", {
+
+                    method: "POST",
+
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+
+                    body: JSON.stringify({
+
+                        latitude: latitude,
+
+                        longitude: longitude,
+
+                        accuracy: accuracy
+
+                    })
+
+                })
+
+                .then(response => response.json())
+
+                .then(data => {
+
+                    console.log(data);
+
+
+                    if (data.success) {
+
+                        updateMap(
+                            latitude,
+                            longitude
+                        );
+
+
+                        document.getElementById(
+                            "message"
+                        ).innerHTML =
+                            "✅ Location saved. GPS accuracy: " +
+                            Number(accuracy).toFixed(1) +
+                            " metres.";
+
+                    }
+
+                    else {
+
+                        document.getElementById(
+                            "message"
+                        ).innerHTML =
+                            data.message;
+
+                    }
+
+
+                    loadStats();
+
+                    loadDailyStats();
+
+                    loadSummaryStats();
+
+                })
+
+                .catch(error => {
+
+                    console.error(
+                        "Error saving location:",
+                        error
+                    );
+
+                    document.getElementById(
+                        "message"
+                    ).innerHTML =
+                        "❌ Error saving GPS location.";
+
+                });
+
+            },
+
+
+            function(error) {
+
+                if (error.code === 1) {
+
+                    document.getElementById(
+                        "message"
+                    ).innerHTML =
+                        "❌ Location permission denied.";
+
+                }
+
+                else if (error.code === 2) {
+
+                    document.getElementById(
+                        "message"
+                    ).innerHTML =
+                        "❌ Location unavailable.";
+
+                }
+
+                else if (error.code === 3) {
+
+                    document.getElementById(
+                        "message"
+                    ).innerHTML =
+                        "⏱️ Location request timed out.";
+
+                }
+
+                else {
+
+                    document.getElementById(
+                        "message"
+                    ).innerHTML =
+                        "❌ Unable to get your location.";
+
+                }
+
+            },
+
+            {
+                enableHighAccuracy: true,
+                timeout: 15000,
+                maximumAge: 0
+            }
+
+        );
+
+    }
+
+
+    // --------------------------------------------------
+    // START TRACKING
+    // --------------------------------------------------
+
+    function startTracking() {
+
+        if (!navigator.geolocation) {
+
+            document.getElementById(
+                "message"
+            ).innerHTML =
+                "GPS is not supported by this browser.";
+
+            return;
+
+        }
+
+
+        if (tracking) {
+
+            document.getElementById(
+                "message"
+            ).innerHTML =
+                "Tracking is already active.";
+
+            return;
+
+        }
+
+
+        tracking = true;
+
+
+        document.getElementById(
+            "status"
+        ).innerHTML =
+            "🟢 Active";
+
+
+        document.getElementById(
+            "message"
+        ).innerHTML =
+            "📡 Tracking started. Getting GPS location...";
+
+
+        getLocation();
+
+
+        trackingInterval = setInterval(
+            getLocation,
+            30000
+        );
+
+    }
+
+
+    // --------------------------------------------------
+    // STOP TRACKING
+    // --------------------------------------------------
+
+    function stopTracking() {
+
+        tracking = false;
+
+
+        document.getElementById(
+            "status"
+        ).innerHTML =
+            "🔴 Stopped";
+
+
+        document.getElementById(
+            "message"
+        ).innerHTML =
+            "⏹ Tracking stopped.";
+
+
+        if (trackingInterval) {
+
+            clearInterval(
+                trackingInterval
+            );
+
+            trackingInterval = null;
+
+        }
+
+    }
+
+
+    // --------------------------------------------------
+    // DATE STATISTICS
+    // --------------------------------------------------
+
+    function loadSelectedDate() {
+
+        let date =
+            document.getElementById(
+                "selectedDate"
+            ).value;
+
+
+        if (!date) {
+
+            document.getElementById(
+                "dateResult"
+            ).innerHTML =
+                "⚠️ Please select a date.";
+
+            return;
+
+        }
+
+
+        fetch(
+            "/date_stats?date=" + date
+        )
+
+        .then(response => response.json())
+
+        .then(data => {
+
+            if (data.error) {
+
+                document.getElementById(
+                    "dateResult"
+                ).innerHTML =
+                    data.error;
+
+                return;
+
+            }
+
+
+            document.getElementById(
+                "dateResult"
+            ).innerHTML = `
+
+                <div class="dashboard">
+
+                    <div class="card">
+
+                        <h3>📅 Date</h3>
+
+                        <div class="value">
+                            ${data.date}
+                        </div>
+
+                    </div>
+
+
+                    <div class="card">
+
+                        <h3>📍 GPS Points</h3>
+
+                        <div class="value">
+                            ${data.points}
+                        </div>
+
+                    </div>
+
+
+                    <div class="card">
+
+                        <h3>🛣️ Distance</h3>
+
+                        <div class="value">
+                            ${Number(data.distance).toFixed(2)} km
+                        </div>
+
+                    </div>
+
+
+                    <div class="card">
+
+                        <h3>📊 Average Speed</h3>
+
+                        <div class="value">
+                            ${Number(data.average_speed).toFixed(2)} km/h
+                        </div>
+
+                    </div>
+
+
+                    <div class="card">
+
+                        <h3>🚗 Maximum Speed</h3>
+
+                        <div class="value">
+                            ${Number(data.max_speed).toFixed(2)} km/h
+                        </div>
+
+                    </div>
+
+
+                    <div class="card">
+
+                        <h3>🕐 First Tracking</h3>
+
+                        <div class="value">
+                            ${data.first_tracking || "--"}
+                        </div>
+
+                    </div>
+
+
+                    <div class="card">
+
+                        <h3>🕐 Last Tracking</h3>
+
+                        <div class="value">
+                            ${data.last_tracking || "--"}
+                        </div>
+
+                    </div>
+
+
+                    <div class="card">
+
+                        <h3>⏱️ Duration</h3>
+
+                        <div class="value">
+                            ${data.tracking_duration || "0m"}
+                        </div>
+
+                    </div>
+
+                </div>
+
+            `;
+
+        })
+
+        .catch(error => {
+
+            console.error(
+                "Date statistics error:",
+                error
+            );
+
+            document.getElementById(
+                "dateResult"
+            ).innerHTML =
+                "❌ Unable to load date statistics.";
+
+        });
+
+    }
+
+
+    // --------------------------------------------------
+    // DAILY ANALYTICS
+    // --------------------------------------------------
+
+    function loadDailyStats() {
+
+        fetch("/daily_stats")
+
+        .then(response => response.json())
+
+        .then(data => {
+
+            let table =
+                document.getElementById(
+                    "dailyTable"
+                );
+
+
+            if (!data.length) {
+
+                table.innerHTML = `
+
+                    <tr>
+
+                        <td colspan="5">
+                            No tracking data available.
+                        </td>
+
+                    </tr>
+
+                `;
+
+                return;
+
+            }
+
+
+            table.innerHTML = "";
+
+
+            data.forEach(day => {
+
+                let row =
+                    document.createElement("tr");
+
+
+                row.innerHTML = `
+
+                    <td>
+                        ${day.date}
+                    </td>
+
+                    <td>
+                        ${day.points}
+                    </td>
+
+                    <td>
+                        ${Number(day.distance).toFixed(2)}
+                        km
+                    </td>
+
+                    <td>
+                        ${Number(day.average_speed).toFixed(2)}
+                        km/h
+                    </td>
+
+                    <td>
+                        ${Number(day.max_speed).toFixed(2)}
+                        km/h
+                    </td>
+
+                `;
+
+
+                row.onclick = function() {
+
+                    document.getElementById(
+                        "selectedDate"
+                    ).value =
+                        day.date;
+
+
+                    loadSelectedDate();
+
+                };
+
+
+                table.appendChild(row);
+
+            });
+
+
+            createCharts(data);
+
+        })
+
+        .catch(error => {
+
+            console.error(
+                "Daily statistics error:",
+                error
+            );
+
+            document.getElementById(
+                "dailyTable"
+            ).innerHTML = `
+
+                <tr>
+
+                    <td colspan="5">
+                        ❌ Unable to load daily analytics.
+                    </td>
+
+                </tr>
+
+            `;
+
+        });
+
+    }
+
+
+    // --------------------------------------------------
+    // PERFORMANCE SUMMARY
+    // --------------------------------------------------
+
+    function loadSummaryStats() {
+
+        fetch("/summary_stats")
+
+        .then(response => response.json())
+
+        .then(data => {
+
+            document.getElementById(
+                "totalTrackingDays"
+            ).innerText =
+                data.total_tracking_days;
+
+
+            document.getElementById(
+                "totalDistance"
+            ).innerText =
+                Number(
+                    data.total_distance_km
+                ).toFixed(2) +
+                " km";
+
+
+            document.getElementById(
+                "overallMaxSpeed"
+            ).innerText =
+                Number(
+                    data.overall_max_speed_kmh
+                ).toFixed(2) +
+                " km/h";
+
+
+            document.getElementById(
+                "totalGpsPoints"
+            ).innerText =
+                data.total_gps_points;
+
+
+            document.getElementById(
+                "highestSpeedDay"
+            ).innerText =
+                data.highest_speed_day || "--";
+
+
+            document.getElementById(
+                "highestSpeedValue"
+            ).innerText =
+                data.highest_speed_day
+                ? Number(
+                    data.highest_speed_value
+                ).toFixed(2) +
+                  " km/h"
+                : "--";
+
+
+            document.getElementById(
+                "longestDistanceDay"
+            ).innerText =
+                data.longest_distance_day || "--";
+
+
+            document.getElementById(
+                "longestDistanceValue"
+            ).innerText =
+                data.longest_distance_day
+                ? Number(
+                    data.longest_distance_value
+                ).toFixed(2) +
+                  " km"
+                : "--";
+
+
+            document.getElementById(
+                "mostGpsPointsDay"
+            ).innerText =
+                data.most_gps_points_day || "--";
+
+
+            document.getElementById(
+                "mostGpsPointsValue"
+            ).innerText =
+                data.most_gps_points_day
+                ? data.most_gps_points_value +
+                  " GPS points"
+                : "--";
+
+        })
+
+        .catch(error => {
+
+            console.error(
+                "Summary statistics error:",
+                error
+            );
+
+        });
+
+    }
+
+
+    // --------------------------------------------------
+    // CHARTS
+    // --------------------------------------------------
+
+    let distanceChart = null;
+
+    let averageSpeedChart = null;
+
+    let maxSpeedChart = null;
+
+    let pointsChart = null;
+
+
+    function createCharts(data) {
+
+        let dates =
+            data.map(
+                day => day.date
+            ).reverse();
+
+
+        let distances =
+            data.map(
+                day => day.distance
+            ).reverse();
+
+
+        let averageSpeeds =
+            data.map(
+                day => day.average_speed
+            ).reverse();
+
+
+        let maxSpeeds =
+            data.map(
+                day => day.max_speed
+            ).reverse();
+
+
+        let points =
+            data.map(
+                day => day.points
+            ).reverse();
+
+
+        // Distance Chart
+
+        if (distanceChart) {
+
+            distanceChart.destroy();
+
+        }
+
+
+        distanceChart =
+            new Chart(
+
+                document.getElementById(
+                    "distanceChart"
+                ),
+
+                {
+
+                    type: "bar",
+
+                    data: {
+
+                        labels: dates,
+
+                        datasets: [{
+
+                            label:
+                                "Distance (km)",
+
+                            data:
+                                distances
+
+                        }]
+
+                    },
+
+                    options: {
+
+                        responsive: true,
+
+                        maintainAspectRatio: true
+
+                    }
+
+                }
+
+            );
+
+
+        // Average Speed Chart
+
+        if (averageSpeedChart) {
+
+            averageSpeedChart.destroy();
+
+        }
+
+
+        averageSpeedChart =
+            new Chart(
+
+                document.getElementById(
+                    "averageSpeedChart"
+                ),
+
+                {
+
+                    type: "line",
+
+                    data: {
+
+                        labels: dates,
+
+                        datasets: [{
+
+                            label:
+                                "Average Speed (km/h)",
+
+                            data:
+                                averageSpeeds,
+
+                            tension: 0.3
+
+                        }]
+
+                    },
+
+                    options: {
+
+                        responsive: true,
+
+                        maintainAspectRatio: true
+
+                    }
+
+                }
+
+            );
+
+
+        // Maximum Speed Chart
+
+        if (maxSpeedChart) {
+
+            maxSpeedChart.destroy();
+
+        }
+
+
+        maxSpeedChart =
+            new Chart(
+
+                document.getElementById(
+                    "maxSpeedChart"
+                ),
+
+                {
+
+                    type: "line",
+
+                    data: {
+
+                        labels: dates,
+
+                        datasets: [{
+
+                            label:
+                                "Maximum Speed (km/h)",
+
+                            data:
+                                maxSpeeds,
+
+                            tension: 0.3
+
+                        }]
+
+                    },
+
+                    options: {
+
+                        responsive: true,
+
+                        maintainAspectRatio: true
+
+                    }
+
+                }
+
+            );
+
+
+        // GPS Points Chart
+
+        if (pointsChart) {
+
+            pointsChart.destroy();
+
+        }
+
+
+        pointsChart =
+            new Chart(
+
+                document.getElementById(
+                    "pointsChart"
+                ),
+
+                {
+
+                    type: "bar",
+
+                    data: {
+
+                        labels: dates,
+
+                        datasets: [{
+
+                            label:
+                                "GPS Points",
+
+                            data:
+                                points
+
+                        }]
+
+                    },
+
+                    options: {
+
+                        responsive: true,
+
+                        maintainAspectRatio: true
+
+                    }
+
+                }
+
+            );
+
+    }
+
+
+    // --------------------------------------------------
+    // INITIAL LOAD
+    // --------------------------------------------------
+
+    loadStats();
+
+    loadDailyStats();
+
+    loadSummaryStats();
+
+</script>
+
+
+</body>
+
+</html>

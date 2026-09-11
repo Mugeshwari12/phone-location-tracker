@@ -1,0 +1,11 @@
+venv/
+__pycache__/
+*.pyc
+.DS_Store
+
+location_history.csv
+gps_history_map.html
+location_history_map.html
+location_map.html
+
+*_export.csv
