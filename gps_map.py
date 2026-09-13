@@ -1,661 +1,510 @@
 import csv
+import math
+import os
 import folium
-from geopy.distance import geodesic
-from datetime import datetime
 
 
-print("GPS History Map")
-print("Loading saved locations...")
+CSV_FILE = "location_history.csv"
+MAP_FILE = "gps_history_map.html"
 
 
-# ==================================================
-# GPS locations
-# ==================================================
+def haversine_distance(lat1, lon1, lat2, lon2):
+    """Calculate distance between two GPS coordinates in kilometers."""
 
-locations = []
+    R = 6371.0
 
+    lat1 = math.radians(lat1)
+    lat2 = math.radians(lat2)
 
-# ==================================================
-# Maximum realistic travel speed
-# ==================================================
+    dlat = lat2 - lat1
+    dlon = math.radians(lon2 - lon1)
 
-MAX_SPEED_KMH = 150
-
-
-# ==================================================
-# Read GPS history
-# ==================================================
-
-try:
-
-    with open(
-        "location_history.csv",
-        "r",
-        encoding="utf-8"
-    ) as file:
-
-        reader = csv.reader(file)
-
-        for row in reader:
-
-            if len(row) >= 3:
-
-                try:
-
-                    time = row[0]
-
-                    latitude = float(row[1])
-
-                    longitude = float(row[2])
-
-                    city = (
-                        row[3]
-                        if len(row) >= 4
-                        else "Unknown"
-                    )
-
-                    country = (
-                        row[4]
-                        if len(row) >= 5
-                        else "Unknown"
-                    )
-
-                    # Check valid coordinates
-
-                    if (
-                        -90 <= latitude <= 90
-                        and -180 <= longitude <= 180
-                    ):
-
-                        locations.append(
-                            (
-                                time,
-                                latitude,
-                                longitude,
-                                city,
-                                country
-                            )
-                        )
-
-                except ValueError:
-
-                    continue
-
-except FileNotFoundError:
-
-    print("No GPS history file found.")
-    print("Create location_history.csv first.")
-
-
-# ==================================================
-# Check whether GPS locations exist
-# ==================================================
-
-if locations:
-
-    # ==================================================
-    # Sort locations by time
-    # ==================================================
-
-    locations.sort(
-        key=lambda x: x[0]
+    a = (
+        math.sin(dlat / 2) ** 2
+        + math.cos(lat1)
+        * math.cos(lat2)
+        * math.sin(dlon / 2) ** 2
     )
 
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
-    # ==================================================
-    # Filter suspicious GPS jumps
-    # ==================================================
-
-    filtered_locations = [
-        locations[0]
-    ]
-
-    maximum_speed = 0.0
-
-    ignored_points = 0
+    return R * c
 
 
-    for location in locations[1:]:
+def load_gps_data():
+    """Load GPS data from location_history.csv."""
 
-        previous = filtered_locations[-1]
+    points = []
 
+    if not os.path.exists(CSV_FILE):
+        print(f"❌ {CSV_FILE} not found.")
+        return points
 
-        # ==================================================
-        # Convert timestamps
-        # ==================================================
+    try:
+        with open(
+            CSV_FILE,
+            "r",
+            encoding="utf-8-sig",
+            newline=""
+        ) as file:
 
-        try:
+            reader = csv.reader(file)
 
-            previous_time = datetime.strptime(
-                previous[0],
-                "%Y-%m-%d %H:%M:%S"
-            )
+            for row in reader:
 
-            current_time = datetime.strptime(
-                location[0],
-                "%Y-%m-%d %H:%M:%S"
-            )
+                # Ignore empty rows
+                if not row:
+                    continue
 
-        except ValueError:
+                # Ignore possible header
+                if row[0].strip().lower() == "timestamp":
+                    continue
 
-            ignored_points += 1
+                # Need at least:
+                # timestamp, latitude, longitude
+                if len(row) < 3:
+                    continue
 
-            continue
+                try:
+                    timestamp = row[0].strip()
 
+                    latitude = float(row[1].strip())
+                    longitude = float(row[2].strip())
 
-        # ==================================================
-        # Calculate time difference
-        # ==================================================
+                    # City and country may or may not exist
+                    city = row[3].strip() if len(row) >= 4 else "Unknown"
+                    country = row[4].strip() if len(row) >= 5 else "Unknown"
 
-        time_difference = (
-            current_time - previous_time
-        ).total_seconds()
+                    # Accuracy may exist in newer rows
+                    accuracy = None
 
+                    if len(row) >= 6:
+                        try:
+                            accuracy = float(row[5].strip())
+                        except ValueError:
+                            accuracy = None
 
-        # ==================================================
-        # Calculate distance
-        # ==================================================
+                    # Basic coordinate validation
+                    if not (-90 <= latitude <= 90):
+                        continue
 
-        distance = geodesic(
-            (
-                previous[1],
-                previous[2]
-            ),
-            (
-                location[1],
-                location[2]
-            )
-        ).meters
+                    if not (-180 <= longitude <= 180):
+                        continue
 
+                    points.append(
+                        {
+                            "timestamp": timestamp,
+                            "latitude": latitude,
+                            "longitude": longitude,
+                            "city": city,
+                            "country": country,
+                            "accuracy": accuracy,
+                        }
+                    )
 
-        # ==================================================
-        # Calculate speed
-        # ==================================================
+                except (ValueError, TypeError):
+                    continue
 
-        if time_difference > 0:
+    except Exception as e:
+        print(f"❌ Error reading CSV: {e}")
 
-            speed_kmh = (
-                distance / time_difference
-            ) * 3.6
-
-        else:
-
-            speed_kmh = 999999
-
-
-        # ==================================================
-        # Accept realistic movement
-        # ==================================================
-
-        if speed_kmh <= MAX_SPEED_KMH:
-
-            filtered_locations.append(
-                location
-            )
-
-            if speed_kmh > maximum_speed:
-
-                maximum_speed = speed_kmh
-
-        else:
-
-            ignored_points += 1
+    return points
 
 
-    # Replace with filtered locations
-
-    locations = filtered_locations
-
-
-    # ==================================================
-    # Latest valid location
-    # ==================================================
-
-    latest = locations[-1]
-
-
-    # ==================================================
-    # Calculate total distance
-    # ==================================================
+def calculate_total_distance(points):
+    """Calculate total distance of the recorded route."""
 
     total_distance = 0.0
 
+    if len(points) < 2:
+        return total_distance
 
-    for i in range(
-        1,
-        len(locations)
-    ):
+    for i in range(1, len(points)):
 
-        previous_point = (
-            locations[i - 1][1],
-            locations[i - 1][2]
+        previous = points[i - 1]
+        current = points[i]
+
+        distance = haversine_distance(
+            previous["latitude"],
+            previous["longitude"],
+            current["latitude"],
+            current["longitude"]
         )
 
-        current_point = (
-            locations[i][1],
-            locations[i][2]
-        )
+        total_distance += distance
 
-        total_distance += geodesic(
-            previous_point,
-            current_point
-        ).meters
+    return total_distance
 
 
-    # ==================================================
-    # Today's locations
-    # ==================================================
+def create_map(points):
+    """Create the GPS history map."""
 
-    today = datetime.now().strftime(
-        "%Y-%m-%d"
-    )
+    if not points:
+        print("❌ No valid GPS points found.")
+        return
 
+    # First and latest locations
+    first = points[0]
+    latest = points[-1]
 
-    today_locations = [
+    # Calculate total route distance
+    total_distance = calculate_total_distance(points)
 
-        location
-
-        for location in locations
-
-        if location[0].startswith(today)
-
-    ]
-
-
-    # ==================================================
-    # Calculate today's distance
-    # ==================================================
-
-    today_distance = 0.0
-
-
-    for i in range(
-        1,
-        len(today_locations)
-    ):
-
-        previous_point = (
-            today_locations[i - 1][1],
-            today_locations[i - 1][2]
-        )
-
-        current_point = (
-            today_locations[i][1],
-            today_locations[i][2]
-        )
-
-        today_distance += geodesic(
-            previous_point,
-            current_point
-        ).meters
-
-
-    # ==================================================
-    # Convert distance to kilometres
-    # ==================================================
-
-    total_distance_km = (
-        total_distance / 1000
-    )
-
-    today_distance_km = (
-        today_distance / 1000
-    )
-
-
-    # ==================================================
-    # Create map
-    # ==================================================
-
+    # Start map at latest location
     gps_map = folium.Map(
-
         location=[
-            latest[1],
-            latest[2]
+            latest["latitude"],
+            latest["longitude"]
         ],
-
-        zoom_start=15
-
+        zoom_start=13,
+        control_scale=True,
+        tiles="OpenStreetMap"
     )
 
+    # =========================================================
+    # TITLE
+    # =========================================================
 
-    # ==================================================
-    # Draw GPS route
-    # ==================================================
+    title_html = f"""
+    <div style="
+        position: fixed;
+        top: 15px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 9999;
+        background: white;
+        padding: 15px 25px;
+        border-radius: 12px;
+        box-shadow: 0 3px 12px rgba(0,0,0,0.25);
+        font-family: Arial, sans-serif;
+        text-align: center;
+        min-width: 280px;
+    ">
 
-    route_points = [
+        <div style="
+            font-size: 20px;
+            font-weight: bold;
+        ">
+            📱 Phone GPS Tracker
+        </div>
 
+        <div style="
+            font-size: 14px;
+            color: #555;
+            margin-top: 5px;
+        ">
+            GPS History & Route Map
+        </div>
+
+        <div style="
+            margin-top: 10px;
+            font-size: 14px;
+        ">
+            📍 GPS Points:
+            <b>{len(points)}</b>
+        </div>
+
+        <div style="
+            font-size: 14px;
+            margin-top: 3px;
+        ">
+            🛣️ Total Distance:
+            <b>{total_distance:.2f} km</b>
+        </div>
+
+    </div>
+    """
+
+    gps_map.get_root().html.add_child(
+        folium.Element(title_html)
+    )
+
+    # =========================================================
+    # ROUTE LINE
+    # =========================================================
+
+    route_coordinates = [
         [
-            latitude,
-            longitude
+            point["latitude"],
+            point["longitude"]
         ]
-
-        for (
-            time,
-            latitude,
-            longitude,
-            city,
-            country
-        ) in locations
-
+        for point in points
     ]
 
-
-    if len(route_points) > 1:
+    if len(route_coordinates) >= 2:
 
         folium.PolyLine(
-
-            route_points,
-
-            tooltip="GPS Movement History",
-
-            weight=5
-
+            route_coordinates,
+            weight=5,
+            opacity=0.8,
+            tooltip=f"Total Route: {total_distance:.2f} km"
         ).add_to(gps_map)
 
+    # =========================================================
+    # GPS POINTS
+    # =========================================================
 
-    # ==================================================
-    # Add GPS point markers
-    # ==================================================
+    for index, point in enumerate(points):
 
-    for index, location in enumerate(locations):
+        accuracy_text = ""
 
-        time = location[0]
+        if point["accuracy"] is not None:
+            accuracy_text = f"""
+            <br>
+            <b>🎯 Accuracy:</b>
+            {point["accuracy"]:.1f} m
+            """
 
-        latitude = location[1]
+        popup_html = f"""
+        <div style="
+            font-family: Arial, sans-serif;
+            min-width: 220px;
+        ">
 
-        longitude = location[2]
+            <h4 style="
+                margin-top: 0;
+                margin-bottom: 10px;
+            ">
+                📍 GPS Point #{index + 1}
+            </h4>
 
-        city = location[3]
+            <b>🕒 Time:</b>
+            {point["timestamp"]}
 
-        country = location[4]
+            <br><br>
 
+            <b>🌐 Latitude:</b>
+            {point["latitude"]:.6f}
 
-        # Calculate speed from previous point
+            <br>
 
-        point_speed = 0.0
+            <b>🌐 Longitude:</b>
+            {point["longitude"]:.6f}
 
+            <br><br>
 
-        if index > 0:
+            <b>📍 Location:</b>
+            {point["city"]}, {point["country"]}
 
-            previous = locations[index - 1]
-
-
-            try:
-
-                previous_time = datetime.strptime(
-                    previous[0],
-                    "%Y-%m-%d %H:%M:%S"
-                )
-
-                current_time = datetime.strptime(
-                    time,
-                    "%Y-%m-%d %H:%M:%S"
-                )
-
-                time_difference = (
-                    current_time - previous_time
-                ).total_seconds()
-
-
-                if time_difference > 0:
-
-                    distance = geodesic(
-
-                        (
-                            previous[1],
-                            previous[2]
-                        ),
-
-                        (
-                            latitude,
-                            longitude
-                        )
-
-                    ).meters
-
-
-                    point_speed = (
-                        distance / time_difference
-                    ) * 3.6
-
-
-                    if point_speed > MAX_SPEED_KMH:
-
-                        point_speed = 0.0
-
-
-            except ValueError:
-
-                point_speed = 0.0
-
-
-        # Create popup
-
-        popup_text = f"""
-        <div style="width:220px">
-
-        <h4>📍 GPS Point {index + 1}</h4>
-
-        <b>Time:</b><br>
-        {time}<br><br>
-
-        <b>Latitude:</b><br>
-        {latitude:.6f}<br><br>
-
-        <b>Longitude:</b><br>
-        {longitude:.6f}<br><br>
-
-        <b>Location:</b><br>
-        {city}, {country}<br><br>
-
-        <b>Speed:</b><br>
-        {point_speed:.2f} km/h
+            {accuracy_text}
 
         </div>
         """
 
-
         folium.CircleMarker(
-
             location=[
-                latitude,
-                longitude
+                point["latitude"],
+                point["longitude"]
             ],
-
             radius=5,
-
             popup=folium.Popup(
-                popup_text,
+                popup_html,
                 max_width=300
             ),
-
-            tooltip=f"GPS Point {index + 1}"
-
+            tooltip=f"GPS Point #{index + 1}",
+            fill=True,
+            fill_opacity=0.8,
+            weight=1
         ).add_to(gps_map)
 
+    # =========================================================
+    # START MARKER
+    # =========================================================
 
-    # ==================================================
-    # Starting location
-    # ==================================================
-
-    first = locations[0]
-
-
-    folium.Marker(
-
-        [
-            first[1],
-            first[2]
-        ],
-
-        popup=f"""
-        <b>🏁 Starting Location</b><br><br>
-
-        Time: {first[0]}<br>
-
-        Latitude: {first[1]:.6f}<br>
-
-        Longitude: {first[2]:.6f}<br>
-
-        Location: {first[3]}, {first[4]}
-        """,
-
-        tooltip="🏁 Start"
-
-    ).add_to(gps_map)
-
-
-    # ==================================================
-    # Latest location
-    # ==================================================
-
-    folium.Marker(
-
-        [
-            latest[1],
-            latest[2]
-        ],
-
-        popup=f"""
-        <b>📍 Latest GPS Location</b><br><br>
-
-        Time: {latest[0]}<br>
-
-        Latitude: {latest[1]:.6f}<br>
-
-        Longitude: {latest[2]:.6f}<br>
-
-        Location: {latest[3]}, {latest[4]}
-        """,
-
-        tooltip="📍 Latest Location"
-
-    ).add_to(gps_map)
-
-
-    # ==================================================
-    # Summary panel
-    # ==================================================
-
-    summary_html = f"""
-
+    start_popup = f"""
     <div style="
-        position: fixed;
-        top: 10px;
-        right: 10px;
-        z-index: 9999;
-        background-color: white;
-        padding: 15px;
-        border: 2px solid black;
-        border-radius: 8px;
-        font-size: 14px;
-        line-height: 1.6;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        font-family: Arial, sans-serif;
+        min-width: 220px;
     ">
 
-        <b>📱 GPS Tracker Summary</b>
+        <h4 style="margin-top: 0;">
+            🟢 Starting Location
+        </h4>
 
-        <hr>
+        <b>🕒 Time:</b>
+        {first["timestamp"]}
 
-        <b>Valid GPS Points:</b>
-        {len(locations)}
+        <br><br>
 
-        <br>
-
-        <b>Ignored GPS Jumps:</b>
-        {ignored_points}
-
-        <br>
-
-        <b>Maximum Speed:</b>
-        {maximum_speed:.2f} km/h
+        <b>🌐 Latitude:</b>
+        {first["latitude"]:.6f}
 
         <br>
 
-        <b>Total Distance:</b>
-        {total_distance_km:.2f} km
+        <b>🌐 Longitude:</b>
+        {first["longitude"]:.6f}
 
-        <br>
+        <br><br>
 
-        <b>Today's Distance:</b>
-        {today_distance_km:.2f} km
-
-        <br>
-
-        <b>Latest Location:</b>
-        {latest[3]}, {latest[4]}
-
-        <br>
-
-        <b>Latest Time:</b>
-        {latest[0]}
+        <b>📍 Location:</b>
+        {first["city"]}, {first["country"]}
 
     </div>
-
     """
 
+    folium.Marker(
+        location=[
+            first["latitude"],
+            first["longitude"]
+        ],
+        popup=folium.Popup(
+            start_popup,
+            max_width=300
+        ),
+        tooltip="🟢 Starting Location",
+        icon=folium.Icon(
+            color="green",
+            icon="play"
+        )
+    ).add_to(gps_map)
 
-    gps_map.get_root().html.add_child(
+    # =========================================================
+    # LATEST LOCATION MARKER
+    # =========================================================
 
-        folium.Element(
-            summary_html
+    latest_popup = f"""
+    <div style="
+        font-family: Arial, sans-serif;
+        min-width: 220px;
+    ">
+
+        <h4 style="margin-top: 0;">
+            🔴 Latest Location
+        </h4>
+
+        <b>🕒 Time:</b>
+        {latest["timestamp"]}
+
+        <br><br>
+
+        <b>🌐 Latitude:</b>
+        {latest["latitude"]:.6f}
+
+        <br>
+
+        <b>🌐 Longitude:</b>
+        {latest["longitude"]:.6f}
+
+        <br><br>
+
+        <b>📍 Location:</b>
+        {latest["city"]}, {latest["country"]}
+
+        <br><br>
+
+        <b>🛣️ Total Route:</b>
+        {total_distance:.2f} km
+
+    </div>
+    """
+
+    folium.Marker(
+        location=[
+            latest["latitude"],
+            latest["longitude"]
+        ],
+        popup=folium.Popup(
+            latest_popup,
+            max_width=300
+        ),
+        tooltip="🔴 Latest Location",
+        icon=folium.Icon(
+            color="red",
+            icon="flag"
+        )
+    ).add_to(gps_map)
+
+    # =========================================================
+    # FIT MAP TO ALL GPS POINTS
+    # =========================================================
+
+    if len(points) > 1:
+
+        gps_map.fit_bounds(
+            [
+                [
+                    point["latitude"],
+                    point["longitude"]
+                ]
+                for point in points
+            ]
         )
 
+    # =========================================================
+    # LEGEND
+    # =========================================================
+
+    legend_html = """
+    <div style="
+        position: fixed;
+        bottom: 25px;
+        left: 25px;
+        z-index: 9999;
+        background: white;
+        padding: 14px 18px;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.25);
+        font-family: Arial, sans-serif;
+        font-size: 13px;
+    ">
+
+        <div style="
+            font-size: 15px;
+            font-weight: bold;
+            margin-bottom: 8px;
+        ">
+            Map Legend
+        </div>
+
+        <div>🟢 Starting Location</div>
+
+        <div>🔴 Latest Location</div>
+
+        <div>🔵 Recorded Route</div>
+
+        <div>⚪ GPS Points</div>
+
+    </div>
+    """
+
+    gps_map.get_root().html.add_child(
+        folium.Element(legend_html)
     )
 
+    # =========================================================
+    # SAVE MAP
+    # =========================================================
 
-    # ==================================================
-    # Save map
-    # ==================================================
+    gps_map.save(MAP_FILE)
 
-    gps_map.save(
-        "gps_history_map.html"
-    )
-
-
-    # ==================================================
-    # Console output
-    # ==================================================
-
+    print()
+    print("========================================")
+    print("📱 GPS HISTORY MAP")
+    print("========================================")
+    print(f"✅ GPS points: {len(points)}")
+    print(f"🛣️ Total distance: {total_distance:.2f} km")
+    print(f"🟢 Start: {first['timestamp']}")
+    print(f"🔴 Latest: {latest['timestamp']}")
     print(
-        "GPS history map created successfully!"
+        f"📍 Latest location: "
+        f"{latest['city']}, {latest['country']}"
     )
-
-    print(
-        f"Valid GPS points: {len(locations)}"
-    )
-
-    print(
-        f"Ignored GPS jumps: {ignored_points}"
-    )
-
-    print(
-        f"Maximum speed: {maximum_speed:.2f} km/h"
-    )
-
-    print(
-        f"Total distance travelled: "
-        f"{total_distance_km:.2f} km"
-    )
-
-    print(
-        f"Today's distance: "
-        f"{today_distance_km:.2f} km"
-    )
-
-    print(
-        f"Latest location: "
-        f"{latest[3]}, {latest[4]}"
-    )
-
-    print(
-        "Open gps_history_map.html"
-    )
+    print(f"🗺️ Map created: {MAP_FILE}")
+    print("========================================")
 
 
-else:
+def main():
+    print()
+    print("📍 Loading GPS history...")
 
-    print(
-        "No GPS locations found."
-    )
+    points = load_gps_data()
+
+    if not points:
+        print("❌ No valid GPS points found.")
+        return
+
+    create_map(points)
+
+
+if __name__ == "__main__":
+    main()

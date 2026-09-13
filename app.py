@@ -6,7 +6,9 @@ import subprocess
 import sys
 from geopy.geocoders import Nominatim
 
+
 app = Flask(__name__)
+
 
 # ---------------------------------------------------------
 # CURRENT GPS STATE
@@ -15,6 +17,15 @@ app = Flask(__name__)
 last_latitude = None
 last_longitude = None
 current_speed = 0.0
+
+
+# ---------------------------------------------------------
+# GPS SETTINGS
+# ---------------------------------------------------------
+
+MAX_GPS_ACCURACY_METERS = 100
+MAX_GPS_JUMP_METERS = 1000
+MAX_REALISTIC_SPEED_KMH = 200
 
 
 # ---------------------------------------------------------
@@ -109,25 +120,16 @@ def read_locations():
                     )
 
                     locations.append({
-
                         "timestamp": timestamp,
-
                         "datetime": dt,
-
                         "latitude": latitude,
-
                         "longitude": longitude,
-
                         "city": city,
-
                         "country": country,
-
                         "accuracy": accuracy
-
                     })
 
                 except (ValueError, TypeError):
-
                     continue
 
     except FileNotFoundError:
@@ -155,7 +157,6 @@ def calculate_distance(
     earth_radius = 6371000
 
     lat1 = math.radians(lat1)
-
     lat2 = math.radians(lat2)
 
     delta_lat = math.radians(
@@ -193,21 +194,13 @@ def calculate_period_statistics(locations):
     if not locations:
 
         return {
-
             "points": 0,
-
             "distance": 0,
-
             "average_speed": 0,
-
             "max_speed": 0,
-
             "first_tracking": None,
-
             "last_tracking": None,
-
             "tracking_duration": "0m"
-
         }
 
     total_distance = 0
@@ -221,45 +214,34 @@ def calculate_period_statistics(locations):
     for current in locations[1:]:
 
         distance = calculate_distance(
-
             previous["latitude"],
-
             previous["longitude"],
-
             current["latitude"],
-
             current["longitude"]
-
         )
 
         time_difference = (
-
             current["datetime"]
             -
             previous["datetime"]
-
         ).total_seconds()
 
         # Ignore extremely large GPS jumps
         if distance > 500:
-
             continue
 
         if time_difference > 0:
 
             speed_kmh = (
-
                 distance
                 /
                 time_difference
                 *
                 3.6
-
             )
 
             # Ignore unrealistic speed
-            if speed_kmh > 200:
-
+            if speed_kmh > MAX_REALISTIC_SPEED_KMH:
                 continue
 
             speeds.append(speed_kmh)
@@ -285,15 +267,12 @@ def calculate_period_statistics(locations):
         max_speed = 0
 
     duration_seconds = (
-
         locations[-1]["datetime"]
         -
         locations[0]["datetime"]
-
     ).total_seconds()
 
     if duration_seconds < 0:
-
         duration_seconds = 0
 
     hours = int(
@@ -347,7 +326,6 @@ def calculate_period_statistics(locations):
 
         "tracking_duration":
             tracking_duration
-
     }
 
 
@@ -387,7 +365,6 @@ def stats():
             "last_tracking": None,
 
             "tracking_duration": "0m"
-
         })
 
     today = datetime.now().strftime(
@@ -449,7 +426,6 @@ def stats():
 
         "tracking_duration":
             statistics["tracking_duration"]
-
     })
 
 
@@ -511,7 +487,6 @@ def daily_stats():
 
             "tracking_duration":
                 statistics["tracking_duration"]
-
         })
 
     return jsonify(result)
@@ -596,7 +571,6 @@ def date_stats():
 
         "tracking_duration":
             statistics["tracking_duration"]
-
     })
 
 
@@ -632,7 +606,6 @@ def summary_stats():
             "most_gps_points_day": None,
 
             "most_gps_points_value": 0
-
         })
 
     daily_data = {}
@@ -672,7 +645,6 @@ def summary_stats():
 
             "max_speed":
                 statistics["max_speed"]
-
         })
 
     total_tracking_days = len(
@@ -692,7 +664,6 @@ def summary_stats():
         ),
 
         default=0
-
     )
 
     highest_speed_record = max(
@@ -703,7 +674,6 @@ def summary_stats():
             x["max_speed"],
 
         default=None
-
     )
 
     longest_distance_record = max(
@@ -714,7 +684,6 @@ def summary_stats():
             x["distance"],
 
         default=None
-
     )
 
     most_points_record = max(
@@ -725,7 +694,6 @@ def summary_stats():
             x["points"],
 
         default=None
-
     )
 
     total_gps_points = sum(
@@ -791,7 +759,6 @@ def summary_stats():
             most_points_record["points"]
             if most_points_record
             else 0
-
     })
 
 
@@ -864,7 +831,6 @@ def export_locations():
         download_name=filename,
 
         mimetype="text/csv"
-
     )
 
 
@@ -965,7 +931,6 @@ def export_daily_stats():
         download_name=filename,
 
         mimetype="text/csv"
-
     )
 
 
@@ -980,9 +945,7 @@ def export_daily_stats():
 def save_location():
 
     global last_latitude
-
     global last_longitude
-
     global current_speed
 
     data = request.get_json()
@@ -1038,18 +1001,40 @@ def save_location():
             )
 
             if accuracy < 0:
-
                 accuracy = None
 
     except (TypeError, ValueError):
 
         accuracy = None
 
+    # -----------------------------------------------------
+    # IGNORE INACCURATE GPS READINGS
+    # -----------------------------------------------------
+
+    if (
+        accuracy is not None
+        and
+        accuracy > MAX_GPS_ACCURACY_METERS
+    ):
+
+        return jsonify({
+
+            "success": False,
+
+            "message":
+                f"GPS accuracy too low "
+                f"({accuracy:.1f} m). "
+                f"Reading ignored."
+
+        })
+
     now = datetime.now()
 
     # -----------------------------------------------------
     # DISTANCE AND SPEED CHECK
     # -----------------------------------------------------
+
+    distance = 0
 
     if (
         last_latitude is not None
@@ -1070,7 +1055,7 @@ def save_location():
         )
 
         # Ignore huge GPS jumps
-        if distance > 1000:
+        if distance > MAX_GPS_JUMP_METERS:
 
             return jsonify({
 
@@ -1108,7 +1093,7 @@ def save_location():
                 )
 
                 # Ignore unrealistic speed
-                if speed_kmh > 200:
+                if speed_kmh > MAX_REALISTIC_SPEED_KMH:
 
                     return jsonify({
 
@@ -1120,6 +1105,10 @@ def save_location():
                     })
 
                 current_speed = speed_kmh
+
+    else:
+
+        current_speed = 0.0
 
     # -----------------------------------------------------
     # REVERSE GEOCODING
@@ -1153,15 +1142,19 @@ def save_location():
                 address.get("city")
 
                 or
+
                 address.get("town")
 
                 or
+
                 address.get("village")
 
                 or
+
                 address.get("municipality")
 
                 or
+
                 "Unknown"
 
             )
@@ -1171,6 +1164,7 @@ def save_location():
                 address.get("country")
 
                 or
+
                 "Unknown"
 
             )
